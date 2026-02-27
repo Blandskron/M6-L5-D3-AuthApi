@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Microservice Client</title>
+    <link rel="icon" href="data:,">
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f0f2f5; }
+        .container { background: white; padding: 2.5rem; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.1); width: 100%; max-width: 420px; }
+        .hidden { display: none !important; }
+        h2 { color: #1c1e21; text-align: center; margin-bottom: 1.5rem; }
+        label { display: block; margin-top: 10px; font-weight: 600; font-size: 0.9rem; color: #4b4f56; }
+        input, textarea { width: 100%; margin: 8px 0; padding: 12px; border: 1px solid #dddfe2; border-radius: 6px; box-sizing: border-box; font-size: 1rem; }
+        button { width: 100%; padding: 12px; background: #1877f2; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 1.1rem; font-weight: bold; margin-top: 15px; transition: background 0.2s; }
+        button:hover { background: #166fe5; }
+        button.secondary { background: #e4e6eb; color: #4b4f56; margin-top: 10px; }
+        button.secondary:hover { background: #d8dadf; }
+        button.logout { background: #f02849; margin-top: 25px; }
+        .profile-img { width: 120px; height: 120px; border-radius: 50%; object-fit: cover; display: block; margin: 0 auto 15px; border: 3px solid #1877f2; }
+        .status-msg { padding: 10px; border-radius: 4px; margin-bottom: 15px; font-size: 0.9rem; text-align: center; }
+        .error { background: #ffebe9; color: #d93025; border: 1px solid rgba(217,48,37,0.2); }
+        .success { background: #e7f3ff; color: #1877f2; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div id="msg-box" class="status-msg hidden"></div>
+
+    <div id="auth-section">
+        <h2 id="auth-title">Iniciar Sesión</h2>
+        <form id="auth-form">
+            <input type="text" id="username" placeholder="Usuario" required>
+            <input type="email" id="email" placeholder="Correo electrónico" class="hidden">
+            <input type="password" id="password" placeholder="Contraseña" required>
+            <button type="submit" id="btn-submit">Entrar</button>
+        </form>
+        <button class="secondary" onclick="toggleAuthMode()" id="btn-toggle">¿No tienes cuenta? Regístrate</button>
+    </div>
+
+    <div id="profile-section" class="hidden">
+        <h2>Mi Perfil</h2>
+        <div id="user-info" style="text-align: center; margin-bottom: 20px;"></div>
+        
+        <form id="profile-form">
+            <img id="current-photo" src="" class="profile-img hidden">
+            
+            <label>Biografía</label>
+            <textarea id="bio" rows="3" placeholder="Cuéntanos sobre ti..."></textarea>
+            
+            <label>Teléfono</label>
+            <input type="text" id="phone" placeholder="+56 9...">
+            
+            <label>Fecha de Nacimiento</label>
+            <input type="date" id="birth_date">
+            
+            <label>Foto de Perfil</label>
+            <input type="file" id="photo" accept="image/*">
+            
+            <button type="submit">Guardar Cambios</button>
+        </form>
+
+        <button class="secondary logout" onclick="logout()">Cerrar Sesión</button>
+    </div>
+</div>
+
+<script>
+    const API_BASE = 'http://127.0.0.1:8000/api';
+    let isLoginMode = true;
+    let currentProfileId = null;
+
+    // --- UTILIDADES ---
+
+    function showMsg(text, isError = false) {
+        const box = document.getElementById('msg-box');
+        box.innerText = text;
+        box.className = `status-msg ${isError ? 'error' : 'success'}`;
+        box.classList.remove('hidden');
+        setTimeout(() => box.classList.add('hidden'), 5000);
+    }
+
+    async function getCSRFToken() {
+        // Primero llamamos al endpoint de CSRF para que el servidor nos asigne la cookie
+        await fetch(`${API_BASE}/csrf/`, { method: 'GET', credentials: 'include' });
+        
+        // Extraemos el token de la cookie 'csrftoken'
+        const name = 'csrftoken';
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function toggleAuthMode() {
+        isLoginMode = !isLoginMode;
+        document.getElementById('auth-title').innerText = isLoginMode ? 'Iniciar Sesión' : 'Registro de Usuario';
+        document.getElementById('email').classList.toggle('hidden', isLoginMode);
+        document.getElementById('btn-submit').innerText = isLoginMode ? 'Entrar' : 'Crear Cuenta';
+        document.getElementById('btn-toggle').innerText = isLoginMode ? '¿No tienes cuenta? Regístrate' : '¿Ya tienes cuenta? Inicia sesión';
+    }
+
+    // --- LÓGICA DE API ---
+
+    // 1. Auth: Login / Registro
+    document.getElementById('auth-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const endpoint = isLoginMode ? '/login/' : '/register/';
+        const csrf = await getCSRFToken();
+
+        const payload = {
+            username: document.getElementById('username').value,
+            password: document.getElementById('password').value
+        };
+        if (!isLoginMode) payload.email = document.getElementById('email').value;
+
+        try {
+            const response = await fetch(API_BASE + endpoint, {
+                method: 'POST',
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrf 
+                },
+                body: JSON.stringify(payload),
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                if (isLoginMode) {
+                    showMsg('Sesión iniciada correctamente');
+                    loadUserData();
+                } else {
+                    showMsg('Usuario creado. Ya puedes iniciar sesión.');
+                    toggleAuthMode();
+                }
+            } else {
+                const errData = await response.json();
+                showMsg('Error: ' + JSON.stringify(errData), true);
+            }
+        } catch (error) {
+            showMsg('Error de conexión con el servidor', true);
+        }
+    };
+
+    // 2. Cargar Perfil tras Login
+    async function loadUserData() {
+        try {
+            // Obtener quién soy (/api/me/)
+            const meRes = await fetch(`${API_BASE}/me/`, { credentials: 'include' });
+            if (!meRes.ok) throw new Error('No autorizado');
+            const user = await meRes.json();
+
+            // Obtener datos de perfil
+            const profRes = await fetch(`${API_BASE}/perfil/`, { credentials: 'include' });
+            const profiles = await profRes.json();
+            
+            // Buscar el perfil asociado a mi ID de usuario
+            const myProfile = profiles.find(p => p.user === user.id);
+
+            if (myProfile) {
+                currentProfileId = myProfile.id;
+                document.getElementById('bio').value = myProfile.bio || '';
+                document.getElementById('phone').value = myProfile.phone || '';
+                document.getElementById('birth_date').value = myProfile.birth_date || '';
+                
+                if (myProfile.photo) {
+                    const img = document.getElementById('current-photo');
+                    img.src = myProfile.photo;
+                    img.classList.remove('hidden');
+                }
+            }
+
+            document.getElementById('user-info').innerHTML = `Bienvenido, <strong>${user.username}</strong><br><small>${user.email || ''}</small>`;
+            document.getElementById('auth-section').classList.add('hidden');
+            document.getElementById('profile-section').classList.remove('hidden');
+
+        } catch (error) {
+            console.error(error);
+        }
+    }
+
+    // 3. Actualizar Perfil (Multipart/form-data)
+    document.getElementById('profile-form').onsubmit = async (e) => {
+        e.preventDefault();
+        if (!currentProfileId) return;
+
+        const csrf = await getCSRFToken();
+        const formData = new FormData();
+        formData.append('bio', document.getElementById('bio').value);
+        formData.append('phone', document.getElementById('phone').value);
+        formData.append('birth_date', document.getElementById('birth_date').value);
+        
+        const photoFile = document.getElementById('photo').files[0];
+        if (photoFile) formData.append('photo', photoFile);
+
+        try {
+            const response = await fetch(`${API_BASE}/perfil/${currentProfileId}/`, {
+                method: 'PATCH', // Usamos PATCH para actualización parcial
+                headers: { 'X-CSRFToken': csrf },
+                body: formData,
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                showMsg('¡Perfil actualizado con éxito!');
+                loadUserData(); // Recargar para ver cambios
+            } else {
+                showMsg('Error al actualizar perfil', true);
+            }
+        } catch (error) {
+            showMsg('Error de red', true);
+        }
+    };
+
+    // 4. Logout
+    async function logout() {
+        const csrf = await getCSRFToken();
+        await fetch(`${API_BASE}/logout/`, { 
+            method: 'POST', 
+            headers: { 'X-CSRFToken': csrf },
+            credentials: 'include' 
+        });
+        window.location.reload();
+    }
+</script>
+
+</body>
+</html>
