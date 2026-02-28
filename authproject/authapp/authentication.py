@@ -1,9 +1,15 @@
+# Proyecto creado por blandskron
 from rest_framework.authentication import SessionAuthentication
+
 
 class CsrfExemptSessionAuthentication(SessionAuthentication):
     """
-    SOLO para desarrollo / Swagger.
-    Desactiva la validación CSRF en endpoints específicos.
+    Autenticación de sesión sin validación CSRF.
+
+    Uso previsto: entornos de desarrollo y pruebas desde Swagger UI.
+    No debe emplearse en producción porque reduce la protección ante CSRF.
     """
+
     def enforce_csrf(self, request):
-        return  # no-op
+        """Sobrescribe la verificación CSRF para convertirla en no-op."""
+        return

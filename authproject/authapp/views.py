@@ -1,31 +1,24 @@
+# Proyecto creado por blandskron
 from django.contrib.auth import authenticate, login, logout
 from django.middleware.csrf import get_token
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from rest_framework import status, viewsets, parsers
+from drf_spectacular.utils import OpenApiResponse, extend_schema, extend_schema_view
+from rest_framework import parsers, status, viewsets
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from drf_spectacular.utils import (
-    extend_schema,
-    extend_schema_view,
-    OpenApiResponse,
-)
-
+from .authentication import CsrfExemptSessionAuthentication
 from .models import Profile
 from .serializers import (
-    RegisterSerializer,
     LoginSerializer,
-    UserSerializer,
     ProfileSerializer,
+    RegisterSerializer,
+    UserSerializer,
 )
-from .authentication import CsrfExemptSessionAuthentication
 
-# ----------------------------
-# AUTH (Tag: Auth)
-# ----------------------------
 
 @extend_schema(
     tags=["Auth"],
@@ -36,6 +29,7 @@ from .authentication import CsrfExemptSessionAuthentication
 @api_view(['GET'])
 @permission_classes([AllowAny])
 def csrf_token_view(request):
+    """Retorna token CSRF para clientes que trabajan con sesión/cookie."""
     return Response({'csrfToken': get_token(request)})
 
 
@@ -49,6 +43,7 @@ def csrf_token_view(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register_view(request):
+    """Registra un usuario nuevo y responde con los datos públicos del usuario."""
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
@@ -68,12 +63,13 @@ def register_view(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login_view(request):
+    """Inicia sesión persistiendo cookie de sesión en la respuesta."""
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
 
     user = authenticate(
         username=serializer.validated_data['username'],
-        password=serializer.validated_data['password']
+        password=serializer.validated_data['password'],
     )
 
     if user is None:
@@ -92,6 +88,7 @@ def login_view(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def logout_view(request):
+    """Finaliza sesión del usuario autenticado."""
     logout(request)
     return Response({'detail': 'Logged out successfully'})
 
@@ -105,12 +102,10 @@ def logout_view(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def me_view(request):
+    """Retorna identidad del usuario de la sesión activa."""
     return Response(UserSerializer(request.user).data)
 
 
-# ----------------------------
-# PROFILE (Tag: Profile)
-# ----------------------------
 @method_decorator(csrf_exempt, name='dispatch')
 @extend_schema_view(
     create=extend_schema(
@@ -126,7 +121,7 @@ def me_view(request):
                     "photo": {"type": "string", "format": "binary"},
                 },
                 "required": [],
-            }
+            },
         },
         responses={201: ProfileSerializer},
     ),
@@ -143,7 +138,7 @@ def me_view(request):
                     "photo": {"type": "string", "format": "binary"},
                 },
                 "required": [],
-            }
+            },
         },
         responses={200: ProfileSerializer},
     ),
@@ -160,7 +155,7 @@ def me_view(request):
                     "photo": {"type": "string", "format": "binary"},
                 },
                 "required": [],
-            }
+            },
         },
         responses={200: ProfileSerializer},
     ),
@@ -171,20 +166,29 @@ def me_view(request):
     ),
 )
 class ProfileViewSet(viewsets.ModelViewSet):
+    """
+    CRUD del perfil del usuario autenticado.
+
+    - Restringe el queryset al usuario en sesión para evitar acceso cruzado.
+    - Acepta multipart/form-data para permitir carga de imagen de perfil.
+    - Usa autenticación de sesión sin CSRF únicamente para facilitar pruebas.
+    """
+
     permission_classes = [IsAuthenticated]
     parser_classes = [parsers.MultiPartParser, parsers.FormParser]
-
     authentication_classes = [CsrfExemptSessionAuthentication]
 
     def get_queryset(self):
+        """Aísla el acceso al perfil del usuario autenticado actual."""
         return Profile.objects.filter(user=self.request.user)
 
     def get_serializer_class(self):
+        """Mantiene ProfileSerializer como serializador de este viewset."""
         return ProfileSerializer
 
     def create(self, request, *args, **kwargs):
+        """Crea o actualiza el perfil propio (upsert explícito en create)."""
         photo = request.FILES.get("photo")
-
         profile, created = Profile.objects.get_or_create(user=request.user)
 
         bio = request.data.get("bio")
@@ -201,19 +205,21 @@ class ProfileViewSet(viewsets.ModelViewSet):
             profile.photo = photo
 
         profile.save()
-
         return Response(
             ProfileSerializer(profile).data,
             status=status.HTTP_201_CREATED if created else status.HTTP_200_OK,
         )
 
     def update(self, request, *args, **kwargs):
+        """PUT completo soportado como upsert sobre perfil propio."""
         return self._upsert(request, partial=False)
 
     def partial_update(self, request, *args, **kwargs):
+        """PATCH parcial soportado como upsert sobre perfil propio."""
         return self._upsert(request, partial=True)
 
     def _upsert(self, request, partial: bool):
+        """Lógica compartida para crear/actualizar perfil sin exponer otros usuarios."""
         profile = self.get_queryset().first()
         if profile is None:
             profile = Profile.objects.create(user=request.user)

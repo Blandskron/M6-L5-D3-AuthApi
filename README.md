@@ -1,137 +1,77 @@
-# 🛡 Auth Microservice — Django + DRF
+<!-- Proyecto creado por blandskron -->
 
-Microservicio de autenticación y gestión de perfil desarrollado con:
+# Auth Microservice - Django + DRF
 
-* Django
-* Django REST Framework
-* drf-spectacular (Swagger + ReDoc)
-* Autenticación basada en sesión (NO JWT)
-* Soporte de subida de imagen en perfil (multipart/form-data)
+Microservicio de autenticación y gestión de perfil desarrollado con Django Rest Framework.
 
----
+## Resumen
 
-# 📦 Estructura del Proyecto
+Este proyecto implementa autenticación basada en sesión/cookies (sin JWT), perfil extendido del usuario y documentación automática OpenAPI con Swagger y ReDoc.
 
-```
+## Estructura del proyecto
+
+```text
 authproject/
-│
-├── config/              # Configuración principal del proyecto
-│   ├── settings.py
-│   ├── urls.py
-│
-├── authapp/             # App principal
-│   ├── models.py
-│   ├── serializers.py
-│   ├── views.py
-│   ├── authentication.py
-│   ├── urls.py
-│
-├── docs/                # Swagger / ReDoc
-│   ├── urls.py
-│
+├── authapp/             # Lógica de autenticación y perfil
+├── config/              # Configuración global del proyecto Django
+├── docs/                # Endpoints para schema, Swagger y ReDoc
+├── media/               # Archivos cargados por usuarios (foto de perfil)
 └── manage.py
+front/
+└── index.html           # Cliente de prueba básico
 ```
 
----
+## Instalación y ejecución
 
-# 🚀 Instalación
-
-## 1️⃣ Crear entorno virtual
+### 1) Crear y activar entorno virtual
 
 ```bash
 python -m venv venv
+source venv/bin/activate  # Linux/Mac
+# venv\Scripts\activate   # Windows
 ```
 
-### Activar entorno
-
-Windows:
+### 2) Instalar dependencias
 
 ```bash
-venv\Scripts\activate
+pip install -r requirements.txt
 ```
 
-Mac/Linux:
+### 3) Migraciones
 
 ```bash
-source venv/bin/activate
+python authproject/manage.py makemigrations
+python authproject/manage.py migrate
 ```
 
----
-
-## 2️⃣ Instalar dependencias
+### 4) Crear superusuario (opcional)
 
 ```bash
-pip install django djangorestframework drf-spectacular pillow
+python authproject/manage.py createsuperuser
 ```
 
----
-
-## 3️⃣ Migraciones
+### 5) Levantar servidor
 
 ```bash
-python manage.py makemigrations
-python manage.py migrate
+python authproject/manage.py runserver
 ```
 
----
+## Documentación de API
 
-## 4️⃣ Crear superusuario (opcional)
+- Swagger: `http://127.0.0.1:8000/docs/swagger/`
+- ReDoc: `http://127.0.0.1:8000/docs/redoc/`
+- OpenAPI schema: `http://127.0.0.1:8000/docs/schema/`
 
-```bash
-python manage.py createsuperuser
-```
+## Flujo de autenticación
 
----
+1. Solicitar token CSRF con `GET /api/csrf/`.
+2. Iniciar sesión con `POST /api/login/`.
+3. Consumir endpoints protegidos con cookie de sesión.
+4. Cerrar sesión con `POST /api/logout/`.
 
-## 5️⃣ Ejecutar servidor
+## Endpoints principales
 
-```bash
-python manage.py runserver
-```
-
----
-
-# 📚 Documentación
-
-Swagger:
-
-```
-http://127.0.0.1:8000/docs/swagger/
-```
-
-ReDoc:
-
-```
-http://127.0.0.1:8000/docs/redoc/
-```
-
-Schema OpenAPI:
-
-```
-http://127.0.0.1:8000/docs/schema/
-```
-
----
-
-# 🔐 Autenticación
-
-Este microservicio usa:
-
-* `SessionAuthentication`
-* Cookies de sesión
-* CSRF protection (deshabilitado temporalmente solo en Perfil para pruebas Swagger)
-
-Flujo recomendado:
-
-1. `GET /api/csrf/`
-2. `POST /api/login/`
-3. Usar endpoints protegidos
-
----
-
-# 📌 Endpoints
-
-## 🧩 Auth
+### Auth
 
 | Método | Endpoint         | Descripción         |
 | ------ | ---------------- | ------------------- |
@@ -141,136 +81,35 @@ Flujo recomendado:
 | POST   | `/api/logout/`   | Cerrar sesión       |
 | GET    | `/api/me/`       | Usuario autenticado |
 
----
-
-## 👤 Profile
-
-Requiere autenticación.
+### Perfil
 
 | Método | Endpoint            | Descripción           |
 | ------ | ------------------- | --------------------- |
-| GET    | `/api/perfil/`      | Listar perfil         |
-| GET    | `/api/perfil/{id}/` | Obtener perfil        |
-| POST   | `/api/perfil/`      | Crear perfil          |
-| PUT    | `/api/perfil/{id}/` | Actualizar perfil     |
+| GET    | `/api/perfil/`      | Listar perfil propio  |
+| GET    | `/api/perfil/{id}/` | Obtener perfil propio |
+| POST   | `/api/perfil/`      | Crear/actualizar      |
+| PUT    | `/api/perfil/{id}/` | Actualización total   |
 | PATCH  | `/api/perfil/{id}/` | Actualización parcial |
 | DELETE | `/api/perfil/{id}/` | Eliminar perfil       |
 
----
+## Subida de imagen
 
-# 🖼 Subida de Imagen
+Los endpoints de perfil aceptan `multipart/form-data` con los campos:
 
-El endpoint de perfil acepta:
+- `bio` (string)
+- `phone` (string)
+- `birth_date` (date)
+- `photo` (archivo binario)
 
-```
-multipart/form-data
-```
+## Seguridad
 
-Campos:
+- Se usa `SessionAuthentication` y permisos `IsAuthenticated`.
+- El queryset de perfil está restringido al usuario autenticado.
+- No se exponen perfiles de terceros.
+- Existe una clase `CsrfExemptSessionAuthentication` solo para desarrollo y pruebas de Swagger.
 
-* bio (string)
-* phone (string)
-* birth_date (date)
-* photo (file - binary)
+## Documentación detallada
 
-Ejemplo curl:
+Para entender arquitectura, módulos, decisiones de diseño y flujos completos revisa:
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/perfil/ \
-  -H "accept: application/json" \
-  -F "bio=Mi biografía" \
-  -F "photo=@img.png"
-```
-
----
-
-# 🗂 Modelo Profile
-
-Extiende el modelo User de Django mediante relación OneToOne:
-
-```python
-user = OneToOneField(User)
-bio = TextField
-phone = CharField
-photo = ImageField
-birth_date = DateField
-created_at = DateTimeField
-updated_at = DateTimeField
-```
-
----
-
-# ⚙ Configuración Importante (settings.py)
-
-```python
-INSTALLED_APPS += [
-    'rest_framework',
-    'drf_spectacular',
-    'authapp',
-    'docs',
-]
-
-REST_FRAMEWORK = {
-    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-    ],
-}
-
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
-```
-
----
-
-# 🧪 CSRF (Modo Desarrollo)
-
-Para pruebas con Swagger, el ProfileViewSet usa:
-
-```python
-CsrfExemptSessionAuthentication
-```
-
-⚠️ En producción se recomienda:
-
-* Activar CSRF completamente
-* Enviar correctamente `X-CSRFToken`
-* Mantener protección activa
-
----
-
-# 🛡 Seguridad
-
-* No usa JWT
-* Usa cookies seguras
-* Usa permisos `IsAuthenticated`
-* Profile limitado al usuario autenticado
-* No expone perfiles de terceros
-
----
-
-# 📌 Tecnologías
-
-* Python 3.10+
-* Django 4+
-* DRF
-* drf-spectacular
-* Pillow
-
----
-
-# 🧠 Próximas mejoras sugeridas
-
-* Activación por email
-* Rate limiting
-* Verificación de email
-* OAuth2
-* Dockerización
-* PostgreSQL
-* Configuración con variables de entorno (.env)
-
----
-
-# 👨‍💻 Autor
-
-Proyecto desarrollado como microservicio modular de autenticación y perfil.
+- `DOCUMENTACION_PROYECTO.md`
